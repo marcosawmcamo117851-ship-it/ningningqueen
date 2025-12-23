@@ -7,10 +7,16 @@
     <link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap" rel="stylesheet">
 
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'ZCOOL KuaiLe', sans-serif; }
+        body { 
+            margin: 0; overflow: hidden; background-color: #000; 
+            font-family: 'ZCOOL KuaiLe', sans-serif; 
+            display: flex; justify-content: center; align-items: center; height: 100vh;
+            touch-action: none; /* 禁止手机浏览器默认的缩放/滚动 */
+        }
         #canvas-wrapper { position: relative; background: #000; height: 100vh; width: 100vw; }
         #canvas-container { width: 100%; height: 100%; display: block; }
         
+        /* === 默认样式 (电脑端) === */
         #video-container {
             position: absolute; top: 20px; right: 20px; width: 120px; height: 90px; z-index: 2;
             border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 8px; overflow: hidden;
@@ -28,6 +34,7 @@
             background: linear-gradient(to bottom, #fff 30%, #ffd700 90%); 
             -webkit-background-clip: text; -webkit-text-fill-color: transparent;
             text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+            width: 100%;
         }
 
         #ui-layer { position: absolute; top: 20px; left: 20px; z-index: 3; pointer-events: none; color: #fff; }
@@ -51,6 +58,40 @@
             background: rgba(50, 0, 0, 0.8); color: #ffaaaa; 
             font-family: monospace; font-size: 12px; padding: 10px;
             overflow-y: scroll; z-index: 9999; display: none; pointer-events: none;
+        }
+
+        /* === 📱 手机竖屏 专属优化 (关键修改) === */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8rem; /* 标题字号减小 */
+                margin-top: 10px;
+                line-height: 1.2;
+            }
+            #title-layer {
+                top: 8%; /* 标题稍微往下挪一点点，避开刘海屏 */
+            }
+            #video-container {
+                width: 80px; height: 60px; /* 摄像头画面变小 */
+                top: 10px; right: 10px;
+                opacity: 0.6;
+            }
+            #fullscreen-btn {
+                top: 10px; right: 100px; /* 全屏按钮位置调整 */
+            }
+            #ui-layer {
+                top: auto;
+                bottom: 30px; /* 说明文字挪到屏幕最下方！ */
+                left: 5%; 
+                width: 90%;
+            }
+            .instructions {
+                font-size: 0.75rem; /* 说明文字变小 */
+                padding: 8px;
+                background: rgba(0, 0, 0, 0.4); /* 背景变淡，不挡画面 */
+            }
+            #status-text {
+                font-size: 1rem;
+            }
         }
     </style>
     
@@ -76,9 +117,9 @@
             <div id="status-text">系统启动中...</div>
             <div class="instructions">
                 • <span class="highlight">握拳/自然</span> : 圣诞树<br/>
-                • <span class="highlight">张开手</span> : 星云散开 (左右拨动)<br/>
+                • <span class="highlight">张开手</span> : 星云散开 (左右无限滑)<br/>
                 • <span class="highlight">比耶(✌️)</span> : 变成文字<br/>
-                • <span class="highlight">捏合(👌)</span> : 抓取照片 (背景定格)
+                • <span class="highlight">捏合(👌)</span> : 锁定照片 (松手不掉)
             </div>
         </div>
         <div id="debug-console"></div>
@@ -87,10 +128,11 @@
     <canvas id="textCanvas" width="1024" height="256" style="display:none;"></canvas>
 
     <script type="module">
+        // 错误捕捉
         window.onerror = function(msg, url, line) {
             const div = document.getElementById('debug-console');
-            div.style.display = 'block';
-            div.innerHTML += `ERR: ${msg} (L${line})<br>`;
+            // div.style.display = 'block'; // 手机上屏蔽报错弹窗，保持美观
+            console.log(`ERR: ${msg} (L${line})`);
         };
 
         import * as THREE from 'three';
@@ -103,14 +145,17 @@
         const myPhotos = ['1.jpg', '2.jpg', '3.jpg', '4.jpg', '5.jpg', '6.jpg', '7.jpg', '8.jpg', '9.jpg', '10.jpg', '11.jpg', '12.jpg', '13.jpg', '14.jpg', '15.jpg', '16.jpg', '17.jpg', '18.jpg', '19.jpg', '20.jpg', '21.jpg', '22.jpg', '23.jpg', '24.jpg', '25.jpg', '26.jpg', '27.jpg'];
 
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        // === 性能配置 ===
         const CONFIG = {
-            goldCount: 200, silverCount: 200, gemCount: 150, emeraldCount: 150,
-            dustCount: 500, treeHeight: 75, maxRadius: 30
+            goldCount: 120, silverCount: 120, gemCount: 80, emeraldCount: 80,
+            dustCount: 300, 
+            treeHeight: 75, maxRadius: 30
         };
 
         const STATE = { TREE: 'tree', SCATTER: 'scatter', ZOOM: 'zoom', TEXT: 'text' };
         let currentState = STATE.TREE;
-        let backgroundState = STATE.TREE; // 记忆背景状态
+        let backgroundState = STATE.TREE; 
         
         let scene, camera, renderer, composer, mainGroup = new THREE.Group();
         let goldMesh, silverMesh, gemMesh, emeraldMesh, dustSystem;
@@ -146,7 +191,7 @@
                 ctx.fillText('宁宁大王圣诞快乐', canvas.width / 2, canvas.height / 2);
                 const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
                 logicData.textTargets = [];
-                const step = 5; 
+                const step = 6; 
                 for (let y = 0; y < canvas.height; y += step) {
                     for (let x = 0; x < canvas.width; x += step) {
                         if (data[(y * canvas.width + x) * 4 + 3] > 128) {
@@ -165,11 +210,14 @@
             
             updateDimensions();
             camera = new THREE.PerspectiveCamera(50, wrapper.clientWidth / wrapper.clientHeight, 0.1, 1000);
-            camera.position.set(0, 0, 110);
+            
+            // 手机上相机离远一点，防止物体太大
+            if (isMobile) camera.position.set(0, 0, 140);
+            else camera.position.set(0, 0, 110);
 
             renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
             renderer.setSize(wrapper.clientWidth, wrapper.clientHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.2)); 
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
             container.appendChild(renderer.domElement);
             
@@ -179,7 +227,7 @@
             scene.add(new THREE.PointLight(0xaaddff, 40, 100).translateY(-20).translateX(-30).translateZ(30));
             
             const renderScene = new RenderPass(scene, camera);
-            const bloomPass = new UnrealBloomPass(new THREE.Vector2(wrapper.clientWidth, wrapper.clientHeight), 1.5, 0.4, 0.85);
+            const bloomPass = new UnrealBloomPass(new THREE.Vector2(wrapper.clientWidth/2, wrapper.clientHeight/2), 1.5, 0.4, 0.85);
             bloomPass.threshold = 0.3; bloomPass.strength = 0.5; bloomPass.radius = 0.5;
             composer = new EffectComposer(renderer); composer.addPass(renderScene); composer.addPass(bloomPass);
 
@@ -197,13 +245,11 @@
         }
 
         function updateDimensions() {
-            const targetAspect = 4 / 3; const windowAspect = window.innerWidth / window.innerHeight;
-            let width, height;
-            if (windowAspect > targetAspect) { height = window.innerHeight; width = height * targetAspect; } 
-            else { width = window.innerWidth; height = width / targetAspect; }
             const wrapper = document.getElementById('canvas-wrapper');
-            wrapper.style.width = width + 'px'; wrapper.style.height = height + 'px';
-            return { width, height };
+            // 手机端全屏处理
+            wrapper.style.width = '100vw';
+            wrapper.style.height = '100vh';
+            return { width: window.innerWidth, height: window.innerHeight };
         }
 
         function createMaterialsAndMeshes() {
@@ -279,7 +325,6 @@
             if (logicData.star) {
                 let target;
                 let effectiveState = currentState;
-                // === 关键：Zoom时背景状态保持不变 ===
                 if(currentState === STATE.ZOOM) effectiveState = backgroundState;
 
                 if (effectiveState === STATE.TREE) target = logicData.star.userData.treePos;
@@ -290,23 +335,20 @@
             }
 
             if (currentState === STATE.ZOOM) { 
-                // 抓取照片时，背景彻底静止，不重置，不旋转
+                rotationVelocity.x *= 0.95; rotationVelocity.y *= 0.95;
+                mainGroup.rotation.y += rotationVelocity.y;
             } else if (currentState === STATE.TEXT) { 
-                // 文字时，回正
                 rotationVelocity.x = 0; rotationVelocity.y = 0;
                 mainGroup.rotation.x = THREE.MathUtils.lerp(mainGroup.rotation.x, 0, 0.05);
                 mainGroup.rotation.y = THREE.MathUtils.lerp(mainGroup.rotation.y, 0, 0.05);
             } else if (currentState === STATE.SCATTER) {
                 if (isHandPresent && aiReady) {
                     const deltaX = handPos.x - lastHandPos.x; 
-                    // 左右拨动
                     if (Math.abs(deltaX) > 0.001) rotationVelocity.y += deltaX * 0.15; 
                     lastHandPos.x = handPos.x; lastHandPos.y = handPos.y;
                 }
-                // === 阻力非常小，接近无阻尼 ===
-                rotationVelocity.y *= 0.98; 
+                rotationVelocity.y *= 0.99; 
                 mainGroup.rotation.y += rotationVelocity.y; 
-                // 强制X轴不转
                 mainGroup.rotation.x = THREE.MathUtils.lerp(mainGroup.rotation.x, 0, 0.1);
             } else if (currentState === STATE.TREE) { 
                 mainGroup.rotation.y += 0.003; 
@@ -320,7 +362,6 @@
                 const item = dataArray[i];
                 let target;
                 
-                // === 关键：Zoom时背景状态保持不变 ===
                 let effectiveState = currentState;
                 if(currentState === STATE.ZOOM) effectiveState = backgroundState;
 
@@ -336,11 +377,9 @@
                 const lerpSpeed = effectiveState === STATE.TEXT ? 0.1 : 0.08;
                 item.currentPos.lerp(target, lerpSpeed);
                 item.rotation.x += item.rotSpeed.x; item.rotation.y += item.rotSpeed.y;
-                
                 let s = item.scale; 
-                if(currentState === STATE.ZOOM) s *= 0.5; // Zoom时背景变暗淡
+                if(currentState === STATE.ZOOM) s *= 0.5; 
                 if(effectiveState === STATE.TEXT && globalParticleIndex >= logicData.textTargets.length) s *= 0.2; 
-                
                 dummy.position.copy(item.currentPos); dummy.rotation.copy(item.rotation); dummy.scale.setScalar(s); dummy.updateMatrix();
                 mesh.setMatrixAt(i, dummy.matrix);
                 globalParticleIndex++;
@@ -353,7 +392,6 @@
             for(let i=0; i<logicData.dust.length; i++) {
                 const item = logicData.dust[i];
                 let target;
-                
                 let effectiveState = currentState;
                 if(currentState === STATE.ZOOM) effectiveState = backgroundState;
 
@@ -460,7 +498,7 @@
         async function predictWebcam(handLandmarker, video) {
             try {
                 const now = performance.now();
-                if (video.currentTime !== lastVideoTime && (now - lastPredictionTime > 50)) {
+                if (video.currentTime !== lastVideoTime && (now - lastPredictionTime > 80)) {
                     lastVideoTime = video.currentTime; lastPredictionTime = now;
                     const result = handLandmarker.detectForVideo(video, now);
                     const canvas = document.getElementById('skeleton-canvas'); const ctx = canvas.getContext('2d');
@@ -472,7 +510,6 @@
                         drawSkeleton(ctx, landmarks, canvas.width, canvas.height); handleGesture(landmarks);
                     } else { 
                         isHandPresent = false; 
-                        // === 手势消失，自动归位为树（但Zoom时不归位） ===
                         if (currentState !== STATE.ZOOM && currentState !== STATE.TREE) {
                             currentState = STATE.TREE;
                             document.getElementById('status-text').innerHTML = "状态: <span style='color:#00ff00'>自动归位 (圣诞树)</span>";
@@ -494,16 +531,14 @@
             ctx.stroke(); for(let i=0; i<landmarks.length; i++) { ctx.beginPath(); ctx.arc(landmarks[i].x * w, landmarks[i].y * h, 3, 0, 2 * Math.PI); ctx.fill(); }
         }
 
-        // === 最终修正手势 ===
+        // === 手势逻辑 ===
         function handleGesture(landmarks) {
             const palmX = 1 - (landmarks[0].x + landmarks[9].x) / 2; const palmY = (landmarks[0].y + landmarks[9].y) / 2;
             handPos.x = handPos.x * 0.8 + palmX * 0.2; handPos.y = handPos.y * 0.8 + palmY * 0.2;
 
-            // 1. 捏合: 极易触发
             const dPinch = Math.sqrt(Math.pow(landmarks[4].x - landmarks[8].x, 2) + Math.pow(landmarks[4].y - landmarks[8].y, 2));
             const isPinch = dPinch < 0.12; 
 
-            // 2. 握拳
             let folded = [false, false, false, false]; 
             const fingerTips = [8, 12, 16, 20];
             fingerTips.forEach((tipIdx, i) => {
@@ -511,38 +546,28 @@
                 if (d < 0.35) folded[i] = true;
             });
             const isFist = folded.filter(f=>f).length >= 4;
-
-            // 3. 比耶
             const isPeace = !folded[0] && !folded[1] && folded[2] && folded[3];
-
-            // 4. 张开
             const isOpen = folded.filter(f=>f).length <= 1; 
 
             const status = document.getElementById('status-text');
 
-            // === 状态机逻辑 ===
-
-            // A. 如果在 ZOOM 状态：必须张手才能退出
             if (currentState === STATE.ZOOM) {
                 if (isOpen) {
-                    currentState = backgroundState; // 回到之前的状态（树或散开）
+                    currentState = backgroundState; 
                     zoomTargetIndex = -1;
-                    status.innerHTML = "状态: <span style='color:#00aaff'>退出查看 (背景恢复)</span>";
+                    status.innerHTML = "状态: <span style='color:#00aaff'>退出查看</span>";
                 } else {
-                    // 无论你手怎么动，只要不张开，就保持 ZOOM
-                    status.innerHTML = "状态: <span style='color:#ffd700'>查看详情 (张手关闭)</span>";
+                    status.innerHTML = "状态: <span style='color:#ffd700'>查看照片 (张手关闭)</span>";
                 }
-                return; // 锁定状态，不执行后续逻辑
+                return; 
             }
 
-            // B. 如果没在 ZOOM，检测捏合进入 ZOOM
             if (isPinch) {
                 if (photoMeshes.length > 0) {
-                    backgroundState = currentState; // 记住当前背景是啥
+                    backgroundState = currentState;
                     currentState = STATE.ZOOM;
                     status.innerHTML = "状态: <span style='color:#ffd700'>已锁定 (松手不掉)</span>";
                     
-                    // 找最近的照片
                     let minDist = Infinity; let bestIdx = 0; const camPos = camera.position; const worldPos = new THREE.Vector3();
                     photoMeshes.forEach((mesh, idx) => {
                         mesh.getWorldPosition(worldPos); if (worldPos.distanceTo(camPos) < minDist) { minDist = worldPos.distanceTo(camPos); bestIdx = idx; }
@@ -552,7 +577,6 @@
                 return;
             }
 
-            // C. 其他手势
             if (isPeace) {
                 if(currentState !== STATE.TEXT) {
                     currentState = STATE.TEXT; zoomTargetIndex = -1;
@@ -567,16 +591,19 @@
                     status.innerHTML = "状态: <span style='color:#00aaff'>星云散开</span>";
                 }
             } else {
-                // 默认状态下如果手还在，保持当前状态，不强制归位
-                // 只有手彻底消失，predictWebcam里才会强制归位
+                if (currentState !== STATE.TREE && currentState !== STATE.TEXT) {
+                    currentState = STATE.TREE;
+                    status.innerHTML = "状态: <span style='color:#00ff00'>自动归位</span>";
+                }
             }
         }
 
         function onWindowResize() {
-            const dims = updateDimensions();
-            camera.aspect = dims.width / dims.height; camera.updateProjectionMatrix();
-            renderer.setSize(dims.width, dims.height); composer.setSize(dims.width, dims.height);
-            composer.passes[1].resolution.set(dims.width, dims.height);
+            updateDimensions();
+            camera.aspect = window.innerWidth / window.innerHeight; 
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight); 
+            composer.setSize(window.innerWidth, window.innerHeight);
         }
 
         initThree();
