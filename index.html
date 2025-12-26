@@ -60,7 +60,7 @@
             overflow-y: scroll; z-index: 9999; display: none; pointer-events: none;
         }
 
-        /* === 📱 手机竖屏 专属优化 (关键修改) === */
+        /* === 📱 手机竖屏 专属优化 === */
         @media (max-width: 768px) {
             h1 {
                 font-size: 1.8rem; /* 标题字号减小 */
@@ -68,7 +68,7 @@
                 line-height: 1.2;
             }
             #title-layer {
-                top: 8%; /* 标题稍微往下挪一点点，避开刘海屏 */
+                top: 8%; /* 标题稍微往下挪一点点 */
             }
             #video-container {
                 width: 80px; height: 60px; /* 摄像头画面变小 */
@@ -76,7 +76,7 @@
                 opacity: 0.6;
             }
             #fullscreen-btn {
-                top: 10px; right: 100px; /* 全屏按钮位置调整 */
+                top: 10px; right: 100px; 
             }
             #ui-layer {
                 top: auto;
@@ -87,7 +87,7 @@
             .instructions {
                 font-size: 0.75rem; /* 说明文字变小 */
                 padding: 8px;
-                background: rgba(0, 0, 0, 0.4); /* 背景变淡，不挡画面 */
+                background: rgba(0, 0, 0, 0.4); 
             }
             #status-text {
                 font-size: 1rem;
@@ -131,7 +131,6 @@
         // 错误捕捉
         window.onerror = function(msg, url, line) {
             const div = document.getElementById('debug-console');
-            // div.style.display = 'block'; // 手机上屏蔽报错弹窗，保持美观
             console.log(`ERR: ${msg} (L${line})`);
         };
 
@@ -469,15 +468,22 @@
 
         async function setupMediaPipe() {
             try {
-                let finalPath = './hand_landmarker.task';
+                // === 关键修改：不再使用 Google 链接，改回本地文件 ===
+                // 默认寻找 model.bin
+                let finalPath = './model.bin'; 
+                
+                // 尝试检测是否存在手势任务文件 (兼容性代码)
                 try {
-                    const check = await fetch('./model.bin', {method:'HEAD'});
-                    if(check.ok) finalPath = './model.bin';
+                    const check = await fetch('./hand_landmarker.task', {method:'HEAD'});
+                    if(check.ok) finalPath = './hand_landmarker.task';
                 } catch(e) {}
 
                 const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
                 const handLandmarker = await HandLandmarker.createFromOptions(vision, {
-                    baseOptions: { modelAssetPath: finalPath, delegate: "GPU" },
+                    baseOptions: { 
+                        modelAssetPath: finalPath, // <--- 这里改成了本地路径，不再使用 storage.googleapis.com
+                        delegate: "GPU" 
+                    },
                     runningMode: "VIDEO", numHands: 1
                 });
                 const video = document.getElementById("input-video");
@@ -490,7 +496,7 @@
                 });
             } catch (error) {
                 console.error("AI启动失败:", error);
-                document.getElementById('status-text').innerHTML = "<span style='color:red'>AI启动失败(检查文件)</span>";
+                document.getElementById('status-text').innerHTML = "<span style='color:red'>AI启动失败: 请检查网络或刷新</span>";
             }
         }
 
