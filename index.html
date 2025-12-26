@@ -11,12 +11,12 @@
             margin: 0; overflow: hidden; background-color: #000; 
             font-family: 'ZCOOL KuaiLe', sans-serif; 
             display: flex; justify-content: center; align-items: center; height: 100vh;
-            touch-action: none; /* 禁止手机浏览器默认的缩放/滚动 */
+            touch-action: none; 
         }
         #canvas-wrapper { position: relative; background: #000; height: 100vh; width: 100vw; }
         #canvas-container { width: 100%; height: 100%; display: block; }
         
-        /* === 默认样式 (电脑端) === */
+        /* 默认样式 */
         #video-container {
             position: absolute; top: 20px; right: 20px; width: 120px; height: 90px; z-index: 2;
             border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 8px; overflow: hidden;
@@ -60,38 +60,15 @@
             overflow-y: scroll; z-index: 9999; display: none; pointer-events: none;
         }
 
-        /* === 📱 手机竖屏 专属优化 === */
+        /* 手机优化 */
         @media (max-width: 768px) {
-            h1 {
-                font-size: 1.8rem; /* 标题字号减小 */
-                margin-top: 10px;
-                line-height: 1.2;
-            }
-            #title-layer {
-                top: 8%; /* 标题稍微往下挪一点点 */
-            }
-            #video-container {
-                width: 80px; height: 60px; /* 摄像头画面变小 */
-                top: 10px; right: 10px;
-                opacity: 0.6;
-            }
-            #fullscreen-btn {
-                top: 10px; right: 100px; 
-            }
-            #ui-layer {
-                top: auto;
-                bottom: 30px; /* 说明文字挪到屏幕最下方！ */
-                left: 5%; 
-                width: 90%;
-            }
-            .instructions {
-                font-size: 0.75rem; /* 说明文字变小 */
-                padding: 8px;
-                background: rgba(0, 0, 0, 0.4); 
-            }
-            #status-text {
-                font-size: 1rem;
-            }
+            h1 { font-size: 1.8rem; margin-top: 10px; line-height: 1.2; }
+            #title-layer { top: 8%; }
+            #video-container { width: 80px; height: 60px; top: 10px; right: 10px; opacity: 0.6; }
+            #fullscreen-btn { top: 10px; right: 100px; }
+            #ui-layer { top: auto; bottom: 30px; left: 5%; width: 90%; }
+            .instructions { font-size: 0.75rem; padding: 8px; background: rgba(0, 0, 0, 0.4); }
+            #status-text { font-size: 1rem; }
         }
     </style>
     
@@ -117,9 +94,9 @@
             <div id="status-text">系统启动中...</div>
             <div class="instructions">
                 • <span class="highlight">握拳/自然</span> : 圣诞树<br/>
-                • <span class="highlight">张开手</span> : 星云散开 (左右无限滑)<br/>
+                • <span class="highlight">张开手</span> : 星云散开<br/>
                 • <span class="highlight">比耶(✌️)</span> : 变成文字<br/>
-                • <span class="highlight">捏合(👌)</span> : 锁定照片 (松手不掉)
+                • <span class="highlight">捏合(👌)</span> : 锁定照片
             </div>
         </div>
         <div id="debug-console"></div>
@@ -128,9 +105,10 @@
     <canvas id="textCanvas" width="1024" height="256" style="display:none;"></canvas>
 
     <script type="module">
-        // 错误捕捉
         window.onerror = function(msg, url, line) {
+            // 开启手机上的报错显示，方便排查
             const div = document.getElementById('debug-console');
+            // div.style.display = 'block'; 
             console.log(`ERR: ${msg} (L${line})`);
         };
 
@@ -145,7 +123,6 @@
 
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         
-        // === 性能配置 ===
         const CONFIG = {
             goldCount: 120, silverCount: 120, gemCount: 80, emeraldCount: 80,
             dustCount: 300, 
@@ -210,7 +187,6 @@
             updateDimensions();
             camera = new THREE.PerspectiveCamera(50, wrapper.clientWidth / wrapper.clientHeight, 0.1, 1000);
             
-            // 手机上相机离远一点，防止物体太大
             if (isMobile) camera.position.set(0, 0, 140);
             else camera.position.set(0, 0, 110);
 
@@ -245,7 +221,6 @@
 
         function updateDimensions() {
             const wrapper = document.getElementById('canvas-wrapper');
-            // 手机端全屏处理
             wrapper.style.width = '100vw';
             wrapper.style.height = '100vh';
             return { width: window.innerWidth, height: window.innerHeight };
@@ -468,20 +443,20 @@
 
         async function setupMediaPipe() {
             try {
-                // === 关键修改：不再使用 Google 链接，改回本地文件 ===
-                // 默认寻找 model.bin
-                let finalPath = './model.bin'; 
-                
-                // 尝试检测是否存在手势任务文件 (兼容性代码)
+                // === 智能文件查找逻辑 (核心修复) ===
+                // 默认寻找 hand_landmarker.task (因为很多用户不改名)
+                let finalPath = './hand_landmarker.task'; 
+
+                // 尝试检测是否存在 model.bin
                 try {
-                    const check = await fetch('./hand_landmarker.task', {method:'HEAD'});
-                    if(check.ok) finalPath = './hand_landmarker.task';
+                    const check = await fetch('./model.bin', {method:'HEAD'});
+                    if(check.ok) finalPath = './model.bin';
                 } catch(e) {}
 
                 const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
                 const handLandmarker = await HandLandmarker.createFromOptions(vision, {
                     baseOptions: { 
-                        modelAssetPath: finalPath, // <--- 这里改成了本地路径，不再使用 storage.googleapis.com
+                        modelAssetPath: finalPath, // <--- 关键：使用检测到的本地文件
                         delegate: "GPU" 
                     },
                     runningMode: "VIDEO", numHands: 1
@@ -496,7 +471,7 @@
                 });
             } catch (error) {
                 console.error("AI启动失败:", error);
-                document.getElementById('status-text').innerHTML = "<span style='color:red'>AI启动失败: 请检查网络或刷新</span>";
+                document.getElementById('status-text').innerHTML = "<span style='color:red'>AI启动失败: 请检查网络</span>";
             }
         }
 
@@ -537,7 +512,6 @@
             ctx.stroke(); for(let i=0; i<landmarks.length; i++) { ctx.beginPath(); ctx.arc(landmarks[i].x * w, landmarks[i].y * h, 3, 0, 2 * Math.PI); ctx.fill(); }
         }
 
-        // === 手势逻辑 ===
         function handleGesture(landmarks) {
             const palmX = 1 - (landmarks[0].x + landmarks[9].x) / 2; const palmY = (landmarks[0].y + landmarks[9].y) / 2;
             handPos.x = handPos.x * 0.8 + palmX * 0.2; handPos.y = handPos.y * 0.8 + palmY * 0.2;
